@@ -101,7 +101,7 @@ class EmptyModule(nn.Module):
 class Darknet(nn.Module):
     def __init__(self, cfgfile,is_train=False):
         super(Darknet, self).__init__()
-        self.training = is_train
+        self.is_train = is_train
         self.blocks = parse_cfg(cfgfile)
         self.models = self.create_network(self.blocks)  # merge conv, bn,leaky
         self.loss = self.models[len(self.models) - 1]
@@ -122,6 +122,7 @@ class Darknet(nn.Module):
         ind = -2
         self.loss = None
         outputs = dict()
+        # out_boxes = np.zeros((50, 6))
         out_boxes = []
         for block in self.blocks:
             ind = ind + 1
@@ -174,10 +175,14 @@ class Darknet(nn.Module):
                     self.loss = self.models[ind](x)
                 outputs[ind] = None
             elif block['type'] == 'yolo':
+                if self.is_train==False:self.training=False
                 if self.training:
                     loss = self.models[ind](x,target)
                 else:
                     boxes = self.models[ind](x)
+                    if boxes is not None:
+                        out_boxes.extend(boxes)
+                        # out_boxes.append(boxes)
             elif block['type'] == 'cost':
                 continue
             else:
@@ -185,7 +190,7 @@ class Darknet(nn.Module):
         if self.training:
             return loss
         else:
-            return boxes
+            return out_boxes
 
     def print_network(self):
         print_cfg(self.blocks)
