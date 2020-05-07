@@ -27,12 +27,11 @@ def detect(cfgfile, weightfile, imgfile):
 
     input_img = cv2.imread(imgfile)
     orig_img = Image.open(imgfile)
-    for i in range(2):
-        start = time.time()
-        boxes,scale = do_detect(m, input_img, 0.5, 0.4, use_cuda)
-        finish = time.time()
-        if i == 1:
-            print('%s: Predicted in %f seconds.' % (imgfile, (finish - start)))
+
+    start = time.time()
+    boxes,scale = do_detect(m, input_img, 0.5, 0.4, use_cuda)
+    finish = time.time()
+    print('%s: Predicted in %f seconds.' % (imgfile, (finish - start)))
 
     class_names = load_class_names(namesfile)
     plot_boxes(orig_img, boxes, 'predictions.jpg', class_names,scale=scale)
@@ -40,5 +39,5 @@ def detect(cfgfile, weightfile, imgfile):
 if __name__ == '__main__':
     cfgfile = r'cfg/yolov4.cfg'
     weightfile = r'weight/net.pth'
-    imgfile = r'data/000017.jpg'
+    imgfile = r'data/000009.jpg'
     detect(cfgfile,weightfile,imgfile)
