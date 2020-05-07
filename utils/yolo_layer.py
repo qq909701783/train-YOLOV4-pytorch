@@ -154,47 +154,47 @@ class YoloLayer(nn.Module):
         for m in self.anchor_mask:
             masked_anchors += self.anchors[m * self.anchor_step:(m + 1) * self.anchor_step]
         masked_anchors = [anchor / self.stride for anchor in masked_anchors]
-        if target==None:
+        try:
+            if target==None:
 
-            nB = output.data.size(0)
-            nA = len(self.anchor_mask)
-            nC = self.num_classes
-            nH = output.data.size(2)
-            nW = output.data.size(3)
+                nB = output.data.size(0)
+                nA = len(self.anchor_mask)
+                nC = self.num_classes
+                nH = output.data.size(2)
+                nW = output.data.size(3)
 
-            output = output.permute(0, 2, 3, 1)
-            output = output.reshape(output.size(0), output.size(1), output.size(2), 3, -1)
-            mask = torch.sigmoid(output[..., 4]) > 0.99
+                output = output.permute(0, 2, 3, 1)
+                output = output.reshape(output.size(0), output.size(1), output.size(2), 3, -1)
+                mask = torch.sigmoid(output[..., 4]) > 0.99
 
-            idxs = torch.nonzero(mask)
-            vecs = output[mask]
-            if vecs.shape[0] == 0:return []
-            a = idxs[:, 3]
+                idxs = torch.nonzero(mask)
+                vecs = output[mask]
+                if vecs.shape[0] == 0:return []
+                a = idxs[:, 3]
 
-            masked_anchors = torch.tensor(masked_anchors).cuda()
-            pre_x = (idxs[:, 2].float() + torch.sigmoid(vecs[:, 0])) * 608 / nW
-            pre_y = (idxs[:, 1].float() + torch.sigmoid(vecs[:, 1])) * 608 / nH
-            pre_w = masked_anchors[a*2] * torch.exp(vecs[:, 2]) * 608 / nW
-            pre_h = masked_anchors[a*2+1] * torch.exp(vecs[:, 3]) * 608 / nH
+                masked_anchors = torch.tensor(masked_anchors).cuda()
+                pre_x = (idxs[:, 2].float() + torch.sigmoid(vecs[:, 0])) * 608 / nW
+                pre_y = (idxs[:, 1].float() + torch.sigmoid(vecs[:, 1])) * 608 / nH
+                pre_w = masked_anchors[a*2] * torch.exp(vecs[:, 2]) * 608 / nW
+                pre_h = masked_anchors[a*2+1] * torch.exp(vecs[:, 3]) * 608 / nH
 
-            # pre_x1 = pre_x - 0.5 * pre_w
-            # pre_y1 = pre_y - 0.5 * pre_h
-            # pre_x2 = pre_x + 0.5 * pre_w
-            # pre_y2 = pre_y + 0.5 * pre_h
-            iou = torch.sigmoid(vecs[:,4])
-            kind = torch.argmax(vecs[:, 5:85], dim=1).float()
+                # pre_x1 = pre_x - 0.5 * pre_w
+                # pre_y1 = pre_y - 0.5 * pre_h
+                # pre_x2 = pre_x + 0.5 * pre_w
+                # pre_y2 = pre_y + 0.5 * pre_h
+                iou = torch.sigmoid(vecs[:,4])
+                kind = torch.argmax(vecs[:, 5:85], dim=1).float()
 
-            box = torch.stack([iou, pre_x, pre_y, pre_w, pre_h, kind], dim=1)
+                box = torch.stack([iou, pre_x, pre_y, pre_w, pre_h, kind], dim=1)
 
-            self.boxes.append(box)
-            # masked_anchors = []
-            # for m in self.anchor_mask:
-            #     masked_anchors += self.anchors[m * self.anchor_step:(m + 1) * self.anchor_step]
-            # masked_anchors = [anchor / self.stride for anchor in masked_anchors]
-            # boxes = get_region_boxes(output.data, self.thresh, self.num_classes, masked_anchors, len(self.anchor_mask))
-            return self.boxes
-
-        else:
+                self.boxes.append(box)
+                # masked_anchors = []
+                # for m in self.anchor_mask:
+                #     masked_anchors += self.anchors[m * self.anchor_step:(m + 1) * self.anchor_step]
+                # masked_anchors = [anchor / self.stride for anchor in masked_anchors]
+                # boxes = get_region_boxes(output.data, self.thresh, self.num_classes, masked_anchors, len(self.anchor_mask))
+                return self.boxes
+        except:
             # masked_anchors = []
             # for m in self.anchor_mask:
             #     masked_anchors += self.anchors[m * self.anchor_step:(m + 1) * self.anchor_step]
