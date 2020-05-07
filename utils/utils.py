@@ -111,8 +111,10 @@ def bbox_ious(boxes1, boxes2, x1y1x2y2=True):
 #     return out_boxes
 
 def nms(boxes, thresh, mode='inter'):
-    args = boxes[:, 0].argsort(descending=True)
+    args = np.argsort(-boxes[:, 0])
+    # args = boxes[:, 0].argsort(descending=True)
     sort_boxes = boxes[args]
+    sort_boxes = torch.Tensor(sort_boxes)
     keep_boxes = []
 
     while len(sort_boxes) > 0:
@@ -125,7 +127,6 @@ def nms(boxes, thresh, mode='inter'):
             sort_boxes = _boxes[_iou < thresh]
         else:
             break
-
     return keep_boxes
 
 def iou(box, boxes, mode="inter"):
@@ -141,7 +142,6 @@ def iou(box, boxes, mode="inter"):
     h = torch.clamp(y2 - y1, min=0)
 
     inter = w * h
-
     if mode == 'inter':
         return inter / (box_area + boxes_area - inter)
     elif mode == 'min':
@@ -302,10 +302,14 @@ def plot_boxes(img, boxes, savename=None, class_names=None,scale=1.0):
     for i in range(len(boxes)):
         box = boxes[i]
 
-        x1 = (box[1] - box[3] / 2.0) / scale
-        y1 = (box[2] - box[4] / 2.0) / scale
-        x2 = (box[1] + box[3] / 2.0) / scale
-        y2 = (box[2] + box[4] / 2.0) / scale
+        # x1 = (box[1] - box[3] / 2.0) / scale
+        # y1 = (box[2] - box[4] / 2.0) / scale
+        # x2 = (box[1] + box[3] / 2.0) / scale
+        # y2 = (box[2] + box[4] / 2.0) / scale
+        x1 = box[1] / scale
+        y1 = box[2] / scale
+        x2 = box[3] / scale
+        y2 = box[4] / scale
 
         rgb = (255, 0, 0)
         if len(box) >= 7 and class_names:
@@ -386,9 +390,9 @@ def do_detect(model, img, conf_thresh, nms_thresh, use_cuda=1):
     img = torch.autograd.Variable(img)
     t2 = time.time()
 
-    boxes = model(img)
-    boxes = boxes[0]
-    # boxes = list_boxes[0][0] + list_boxes[1][0] + list_boxes[2][0]
+    list_boxes = model(img)
+    boxes = np.array(list_boxes)
+    # boxes = list_boxes[0] + list_boxes[1]
     t3 = time.time()
 
     boxes = nms(boxes, nms_thresh)
