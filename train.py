@@ -17,8 +17,8 @@ from torch.autograd import Variable
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=200, help="number of epochs")
-    parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
+    parser.add_argument("--epochs", type=int, default=500, help="number of epochs")
+    parser.add_argument("--batch_size", type=int, default=2, help="size of each image batch")
     parser.add_argument("--model_def", type=str, default="cfg/yolov4.cfg", help="path to model definition file")
     parser.add_argument("--pretrained_weights", type=str,default="weight/yolov4.weights",help="if specified starts from checkpoint model")
     parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
@@ -32,7 +32,7 @@ if __name__ == '__main__':
 
     # Initiate model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = Darknet(opt.model_def).to(device)
+    model = Darknet(opt.model_def,is_train=True).to(device)
 
     # If specified we start from checkpoint
     if opt.pretrained_weights:
@@ -62,8 +62,10 @@ if __name__ == '__main__':
     # region_loss.num_anchors = int(loss_opt['num'])
     # region_loss.anchor_step = len(region_loss.anchors) // region_loss.num_anchors
 
+    mode_path = r'weight/net.pth'
     mode_save = r'weight/net.pth'
-    model.load_state_dict(torch.load(mode_save, map_location=device))
+    model.load_state_dict(torch.load(mode_save))
+    # model.load_weights(mode_path)
     for epoch in range(opt.epochs):
         model.train()
         for batch_i, (imgs, targets) in enumerate(train_loader):
@@ -72,17 +74,14 @@ if __name__ == '__main__':
             targets = Variable(targets.to(device), requires_grad=False)
 
             optimizer.zero_grad()
-            # loss = model(imgs,targets)
-            box = model(imgs)
-            print(box[0])
+            loss = model(imgs,targets)
 
             # loss = region_loss(outputs, targets)
-            # loss.backward()
-            # optimizer.step()
-            # print(epoch,loss.item())
-            break
-        break
-    # torch.save(model.state_dict(), mode_save)
+            loss.backward()
+            optimizer.step()
+            print(epoch,loss.item())
+
+    torch.save(model.state_dict(), mode_save)
 
 
 
