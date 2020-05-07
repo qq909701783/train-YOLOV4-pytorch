@@ -154,47 +154,8 @@ class YoloLayer(nn.Module):
         for m in self.anchor_mask:
             masked_anchors += self.anchors[m * self.anchor_step:(m + 1) * self.anchor_step]
         masked_anchors = [anchor / self.stride for anchor in masked_anchors]
-        try:
-            if target==None:
 
-                nB = output.data.size(0)
-                nA = len(self.anchor_mask)
-                nC = self.num_classes
-                nH = output.data.size(2)
-                nW = output.data.size(3)
-
-                output = output.permute(0, 2, 3, 1)
-                output = output.reshape(output.size(0), output.size(1), output.size(2), 3, -1)
-                mask = torch.sigmoid(output[..., 4]) > 0.99
-
-                idxs = torch.nonzero(mask)
-                vecs = output[mask]
-                if vecs.shape[0] == 0:return []
-                a = idxs[:, 3]
-
-                masked_anchors = torch.tensor(masked_anchors).cuda()
-                pre_x = (idxs[:, 2].float() + torch.sigmoid(vecs[:, 0])) * 608 / nW
-                pre_y = (idxs[:, 1].float() + torch.sigmoid(vecs[:, 1])) * 608 / nH
-                pre_w = masked_anchors[a*2] * torch.exp(vecs[:, 2]) * 608 / nW
-                pre_h = masked_anchors[a*2+1] * torch.exp(vecs[:, 3]) * 608 / nH
-
-                # pre_x1 = pre_x - 0.5 * pre_w
-                # pre_y1 = pre_y - 0.5 * pre_h
-                # pre_x2 = pre_x + 0.5 * pre_w
-                # pre_y2 = pre_y + 0.5 * pre_h
-                iou = torch.sigmoid(vecs[:,4])
-                kind = torch.argmax(vecs[:, 5:85], dim=1).float()
-
-                box = torch.stack([iou, pre_x, pre_y, pre_w, pre_h, kind], dim=1)
-
-                self.boxes.append(box)
-                # masked_anchors = []
-                # for m in self.anchor_mask:
-                #     masked_anchors += self.anchors[m * self.anchor_step:(m + 1) * self.anchor_step]
-                # masked_anchors = [anchor / self.stride for anchor in masked_anchors]
-                # boxes = get_region_boxes(output.data, self.thresh, self.num_classes, masked_anchors, len(self.anchor_mask))
-                return self.boxes
-        except:
+        if target is not None:
             # masked_anchors = []
             # for m in self.anchor_mask:
             #     masked_anchors += self.anchors[m * self.anchor_step:(m + 1) * self.anchor_step]
@@ -235,16 +196,19 @@ class YoloLayer(nn.Module):
             # for the prediction of localization of each bounding box, there exist 4 parameters (tx, ty, tw, th)
             pred_boxes = torch.cuda.FloatTensor(4, nB * nA * nH * nW)
             # tx and ty
-            grid_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).repeat(nB * nA, 1, 1).view(nB * nA * nH * nW).cuda()
+            grid_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).repeat(nB * nA, 1, 1).view(
+                nB * nA * nH * nW).cuda()
             grid_y = torch.linspace(0, nH - 1, nH).repeat(nW, 1).t().repeat(nB * nA, 1, 1).view(
                 nB * nA * nH * nW).cuda()
             # for each anchor there are anchor_step variables (with the structure num_anchor*anchor_step)
             # for each row(anchor), the first variable is anchor's width, second is anchor's height
             # pw and ph
             anchor_w = torch.Tensor(masked_anchors).view(nA, self.anchor_step).index_select(1,
-                                                                                          torch.LongTensor([0])).cuda()
+                                                                                            torch.LongTensor(
+                                                                                                [0])).cuda()
             anchor_h = torch.Tensor(masked_anchors).view(nA, self.anchor_step).index_select(1,
-                                                                                          torch.LongTensor([1])).cuda()
+                                                                                            torch.LongTensor(
+                                                                                                [1])).cuda()
             # for each pixel (grid) repeat the above process (obtain width and height of each grid)
             anchor_w = anchor_w.repeat(nB, 1).repeat(1, 1, nH * nW).view(nB * nA * nH * nW)
             anchor_h = anchor_h.repeat(nB, 1).repeat(1, 1, nH * nW).view(nB * nA * nH * nW)
@@ -285,7 +249,7 @@ class YoloLayer(nn.Module):
             th = Variable(th.cuda())
             tconf = Variable(tconf.cuda())
             tcls = Variable(tcls.view(-1)[cls_mask.view(-1)].long().cuda())
-            A = w[w<-0.14]
+            A = w[w < -0.14]
             coord_mask = Variable(coord_mask.cuda())
             conf_mask = Variable(conf_mask.cuda().sqrt())
             cls_mask = Variable(cls_mask.view(-1, 1).repeat(1, nC).cuda())
@@ -316,3 +280,36 @@ class YoloLayer(nn.Module):
             # # self.seen, nGT, nCorrect, nProposals, loss_x.data[0], loss_y.data[0], loss_w.data[0], loss_h.data[0],
             # # loss_conf.data[0], loss_cls.data[0], loss.data[0]))
             return loss
+
+        else:
+            nB = output.data.size(0)
+            nA = len(self.anchor_mask)
+            nC = self.num_classes
+            nH = output.data.size(2)
+            nW = output.data.size(3)
+
+            output = output.permute(0, 2, 3, 1)
+            output = output.reshape(output.size(0), output.size(1), output.size(2), 3, -1)
+            mask = torch.sigmoid(output[..., 4]) > 0.98
+
+            idxs = torch.nonzero(mask)
+            vecs = output[mask]
+            if vecs.shape[0] != 0:
+                a = idxs[:, 3]
+
+                masked_anchors = torch.tensor(masked_anchors).cuda()
+                pre_x = (idxs[:, 2].float() + torch.sigmoid(vecs[:, 0])) * 608 / nW
+                pre_y = (idxs[:, 1].float() + torch.sigmoid(vecs[:, 1])) * 608 / nH
+                pre_w = masked_anchors[a * 2] * torch.exp(vecs[:, 2]) * 608 / nW
+                pre_h = masked_anchors[a * 2 + 1] * torch.exp(vecs[:, 3]) * 608 / nH
+
+                pre_x1 = pre_x - 0.5 * pre_w
+                pre_y1 = pre_y - 0.5 * pre_h
+                pre_x2 = pre_x + 0.5 * pre_w
+                pre_y2 = pre_y + 0.5 * pre_h
+                iou = torch.sigmoid(vecs[:, 4])
+                kind = torch.argmax(vecs[:, 5:85], dim=1).float()
+                box = torch.stack([iou, pre_x1, pre_y1, pre_x2, pre_y2, kind], dim=1)
+                box = np.array(box.data.cpu())
+
+                return box
