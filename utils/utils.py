@@ -89,45 +89,45 @@ def bbox_ious(boxes1, boxes2, x1y1x2y2=True):
     return carea / uarea
 
 
-# def nms(boxes, nms_thresh):
-#     if len(boxes) == 0:
-#         return boxes
+def nms(boxes, nms_thresh):
+    if len(boxes) == 0:
+        return boxes
+
+    det_confs = torch.zeros(len(boxes))
+    for i in range(len(boxes)):
+        det_confs[i] = 1 - boxes[i][4]
+
+    _, sortIds = torch.sort(det_confs)
+    out_boxes = []
+    for i in range(len(boxes)):
+        box_i = boxes[sortIds[i]]
+        if box_i[4] > 0:
+            out_boxes.append(box_i)
+            for j in range(i + 1, len(boxes)):
+                box_j = boxes[sortIds[j]]
+                if bbox_iou(box_i, box_j, x1y1x2y2=False) > nms_thresh:
+                    # print(box_i, box_j, bbox_iou(box_i, box_j, x1y1x2y2=False))
+                    box_j[4] = 0
+    return out_boxes
+
+# def nms(boxes, thresh, mode='inter'):
+#     args = np.argsort(-boxes[:, 0])
+#     # args = boxes[:, 0].argsort(descending=True)
+#     sort_boxes = boxes[args]
+#     sort_boxes = torch.Tensor(sort_boxes)
+#     keep_boxes = []
 #
-#     det_confs = torch.zeros(len(boxes))
-#     for i in range(len(boxes)):
-#         det_confs[i] = 1 - boxes[i][4]
+#     while len(sort_boxes) > 0:
+#         _box = sort_boxes[0]
+#         keep_boxes.append(_box)
 #
-#     _, sortIds = torch.sort(det_confs)
-#     out_boxes = []
-#     for i in range(len(boxes)):
-#         box_i = boxes[sortIds[i]]
-#         if box_i[4] > 0:
-#             out_boxes.append(box_i)
-#             for j in range(i + 1, len(boxes)):
-#                 box_j = boxes[sortIds[j]]
-#                 if bbox_iou(box_i, box_j, x1y1x2y2=False) > nms_thresh:
-#                     # print(box_i, box_j, bbox_iou(box_i, box_j, x1y1x2y2=False))
-#                     box_j[4] = 0
-#     return out_boxes
-
-def nms(boxes, thresh, mode='inter'):
-    args = np.argsort(-boxes[:, 0])
-    # args = boxes[:, 0].argsort(descending=True)
-    sort_boxes = boxes[args]
-    sort_boxes = torch.Tensor(sort_boxes)
-    keep_boxes = []
-
-    while len(sort_boxes) > 0:
-        _box = sort_boxes[0]
-        keep_boxes.append(_box)
-
-        if len(sort_boxes) > 1:
-            _boxes = sort_boxes[1:]
-            _iou = iou(_box, _boxes, mode)
-            sort_boxes = _boxes[_iou < thresh]
-        else:
-            break
-    return keep_boxes
+#         if len(sort_boxes) > 1:
+#             _boxes = sort_boxes[1:]
+#             _iou = iou(_box, _boxes, mode)
+#             sort_boxes = _boxes[_iou < thresh]
+#         else:
+#             break
+#     return keep_boxes
 
 def iou(box, boxes, mode="inter"):
     box_area = (box[3] - box[1]) * (box[4] - box[2])
@@ -218,13 +218,13 @@ def get_region_boxes(output, conf_thresh, num_classes, anchors, num_anchors, onl
                         conf = det_confs[ind] * cls_max_confs[ind]
 
                     if conf > conf_thresh:
-                        bcx = xs[ind]
-                        bcy = ys[ind]
-                        bw = ws[ind]
-                        bh = hs[ind]
+                        bcx = xs[ind]* 608 / w
+                        bcy = ys[ind]* 608 / h
+                        bw = ws[ind]* 608 / w
+                        bh = hs[ind]* 608 / h
                         cls_max_conf = cls_max_confs[ind]
                         cls_max_id = cls_max_ids[ind]
-                        box = [bcx / w, bcy / h, bw / w, bh / h, det_conf, cls_max_conf, cls_max_id]
+                        box = [bcx , bcy , bw , bh , det_conf, cls_max_conf, cls_max_id]
                         if (not only_objectness) and validation:
                             for c in range(num_classes):
                                 tmp_conf = cls_confs[ind][c]
@@ -243,7 +243,7 @@ def get_region_boxes(output, conf_thresh, num_classes, anchors, num_anchors, onl
     return all_boxes
 
 
-def plot_boxes_cv2(img, boxes, savename=None, class_names=None, color=None):
+def plot_boxes_cv2(img, boxes, savename=None, class_names=None, color=None,scale=1):
     import cv2
     colors = torch.FloatTensor([[1, 0, 1], [0, 0, 1], [0, 1, 1], [0, 1, 0], [1, 1, 0], [1, 0, 0]]);
 
@@ -259,10 +259,10 @@ def plot_boxes_cv2(img, boxes, savename=None, class_names=None, color=None):
     height = img.shape[0]
     for i in range(len(boxes)):
         box = boxes[i]
-        x1 = int((box[0] - box[2] / 2.0) * width)
-        y1 = int((box[1] - box[3] / 2.0) * height)
-        x2 = int((box[0] + box[2] / 2.0) * width)
-        y2 = int((box[1] + box[3] / 2.0) * height)
+        x1 = (box[0] - box[2] / 2.0) / scale
+        y1 = (box[1] - box[3] / 2.0) / scale
+        x2 = (box[0] + box[2] / 2.0) / scale
+        y2 = (box[1] + box[3] / 2.0) / scale
 
         if color:
             rgb = color
@@ -279,15 +279,15 @@ def plot_boxes_cv2(img, boxes, savename=None, class_names=None, color=None):
             blue = get_color(0, offset, classes)
             if color is None:
                 rgb = (red, green, blue)
-            img = cv2.putText(img, class_names[cls_id], (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1.2, rgb, 1)
-        img = cv2.rectangle(img, (x1, y1), (x2, y2), rgb, 1)
+            img = cv2.putText(img, class_names[cls_id], (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 2.5, rgb, 10)
+        img = cv2.rectangle(img, (x1, y1), (x2, y2), rgb, 10)
     if savename:
         print("save plot results to %s" % savename)
         cv2.imwrite(savename, img)
     return img
 
 
-def plot_boxes(img, boxes, savename=None, class_names=None,scale=1.0):
+def plot_boxes(img, boxes, savename=None, class_names=None,scale=1):
     colors = torch.FloatTensor([[1, 0, 1], [0, 0, 1], [0, 1, 1], [0, 1, 0], [1, 1, 0], [1, 0, 0]]);
 
     def get_color(c, x, max_val):
@@ -298,18 +298,15 @@ def plot_boxes(img, boxes, savename=None, class_names=None,scale=1.0):
         r = (1 - ratio) * colors[i][c] + ratio * colors[j][c]
         return int(r * 255)
 
+    width = img.width
+    height = img.height
     draw = ImageDraw.Draw(img)
     for i in range(len(boxes)):
         box = boxes[i]
-
-        # x1 = (box[1] - box[3] / 2.0) / scale
-        # y1 = (box[2] - box[4] / 2.0) / scale
-        # x2 = (box[1] + box[3] / 2.0) / scale
-        # y2 = (box[2] + box[4] / 2.0) / scale
-        x1 = box[1] / scale
-        y1 = box[2] / scale
-        x2 = box[3] / scale
-        y2 = box[4] / scale
+        x1 = (box[0] - box[2] / 2.0) / scale
+        y1 = (box[1] - box[3] / 2.0) / scale
+        x2 = (box[0] + box[2] / 2.0) / scale
+        y2 = (box[1] + box[3] / 2.0) / scale
 
         rgb = (255, 0, 0)
         if len(box) >= 7 and class_names:
@@ -391,14 +388,12 @@ def do_detect(model, img, conf_thresh, nms_thresh, use_cuda=1):
     t2 = time.time()
 
     list_boxes = model(img)
-    boxes = np.array(list_boxes)
-    # boxes = list_boxes[0] + list_boxes[1]
+    boxes = list_boxes[0][0] + list_boxes[1][0] + list_boxes[2][0]
     t3 = time.time()
-
     boxes = nms(boxes, nms_thresh)
     t4 = time.time()
 
-    if False:
+    if True:
         print('-----------------------------------')
         print(' image to tensor : %f' % (t1 - t0))
         print('  tensor to cuda : %f' % (t2 - t1))
@@ -488,3 +483,22 @@ def get_image_size(fname):
 
 def logging(message):
     print('%s %s' % (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), message))
+
+
+def draw_boxes(img, boxes, savename=None, class_names=None,scale=1.0):
+
+    for i in range(len(boxes)):
+        box = boxes[i]
+        x1 = box[1] / scale
+        y1 = box[2] / scale
+        x2 = box[3] / scale
+        y2 = box[4] / scale
+        cls_id = int(box[5])
+
+        # cv2.putText(img,class_names[cls_id],(x1,y1),cv2.FONT_HERSHEY_SIMPLEX,2, (156, 99, 182), 2)
+        cv2.rectangle(img,(x1,y1),(x2,y2),(0,0,255),8)
+        cv2.imwrite('predictions.jpg',img)
+    # if savename:
+    #     print("save plot results to %s" % savename)
+    #     img.save(savename)
+    return img
