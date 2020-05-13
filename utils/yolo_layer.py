@@ -287,29 +287,56 @@ class YoloLayer(nn.Module):
             nC = self.num_classes
             nH = output.data.size(2)
             nW = output.data.size(3)
+            anchor_step = len(masked_anchors) // nA
+            all_boxes = []
 
-            output = output.permute(0, 2, 3, 1)
-            output = output.reshape(output.size(0), output.size(1), output.size(2), 3, -1)
-            mask = torch.sigmoid(output[..., 4]) > 0.98
+            out = output.view(nB * nA, 5 + 130, nH * nW).transpose(0, 1).contiguous().view(5+130,nB*nA*nH*nW)
+            grid_x = torch.linspace(0,nW-1,nW).repeat(nH,1).repeat(nB*nA,1,1).view(nB*nA*nH*nW).type_as(output)  # cuda()
+            grid_y = torch.linspace(0,nH-1,nH).repeat(nW,1).t().repeat(nB*nA,1,1).view(nB*nA*nH*nW).type_as(output)
+            xs = (torch.sigmoid(out[0]) + grid_x) * 608 / nW
+            ys = (torch.sigmoid(out[1]) + grid_y) * 608 / nH
 
-            idxs = torch.nonzero(mask)
-            vecs = output[mask]
-            if vecs.shape[0] != 0:
-                a = idxs[:, 3]
+            anchor_w = torch.Tensor(masked_anchors).view(nA,anchor_step).index_select(1,torch.LongTensor([0]))
+            anchor_h = torch.Tensor(masked_anchors).view(nA,anchor_step).index_select(1,torch.LongTensor([1]))
+            anchor_w = anchor_w.repeat(nB, 1).repeat(1, 1, nH * nW).view(nB * nA * nH * nW).type_as(output)  # cuda()
+            anchor_h = anchor_h.repeat(nB, 1).repeat(1, 1, nH * nW).view(nB * nA * nH * nW).type_as(output)  # cuda()
 
-                masked_anchors = torch.tensor(masked_anchors).cuda()
-                pre_x = (idxs[:, 2].float() + torch.sigmoid(vecs[:, 0])) * 608 / nW
-                pre_y = (idxs[:, 1].float() + torch.sigmoid(vecs[:, 1])) * 608 / nH
-                pre_w = masked_anchors[a * 2] * torch.exp(vecs[:, 2]) * 608 / nW
-                pre_h = masked_anchors[a * 2 + 1] * torch.exp(vecs[:, 3]) * 608 / nH
+            ws = (torch.exp(out[2]) * anchor_w) * 608 / nW
+            hs = (torch.exp(out[3]) * anchor_h) * 608 / nH
 
-                pre_x1 = pre_x - 0.5 * pre_w
-                pre_y1 = pre_y - 0.5 * pre_h
-                pre_x2 = pre_x + 0.5 * pre_w
-                pre_y2 = pre_y + 0.5 * pre_h
-                iou = torch.sigmoid(vecs[:, 4])
-                kind = torch.argmax(vecs[:, 5:85], dim=1).float()
-                box = torch.stack([iou, pre_x1, pre_y1, pre_x2, pre_y2, kind], dim=1)
-                box = np.array(box.data.cpu())
+            det_confs = torch.sigmoid(out[4])
 
-                return box
+            cls_confs = torch.nn.Softmax()(Variable(out[5:5 + 130].transpose(0, 1))).data
+            cls_max_confs, cls_max_ids = torch.max(cls_confs, 1)
+            cls_max_confs = cls_max_confs.view(-1)
+            cls_max_ids = cls_max_ids.view(-1)
+
+            sz_hw = nH * nW
+            sz_hwa = sz_hw * nA
+            det_confs = convert2cpu(det_confs)
+            cls_max_confs = convert2cpu(cls_max_confs)
+            cls_max_ids = convert2cpu_long(cls_max_ids)
+            xs = convert2cpu(xs)
+            ys = convert2cpu(ys)
+            ws = convert2cpu(ws)
+            hs = convert2cpu(hs)
+
+            for b in range(nB):
+                boxes = []
+                for cy in range(nH):
+                    for cx in range(nW):
+                        for i in range(nA):
+                            ind = b * sz_hwa + i * sz_hw + cy * nW + cx
+                            det_conf = det_confs[ind]
+                            conf = det_confs[ind] * cls_max_confs[ind]
+                            if conf > 0.7:
+                                bcx = xs[ind]
+                                bcy = ys[ind]
+                                bw = ws[ind]
+                                bh = hs[ind]
+                                cls_max_conf = cls_max_confs[ind]
+                                cls_max_id = cls_max_ids[ind]
+                                box = [bcx,bcy,bw,bh,det_conf,cls_max_conf,cls_max_id]
+                                boxes.append(box)
+                all_boxes.append(boxes)
+            return all_boxes
